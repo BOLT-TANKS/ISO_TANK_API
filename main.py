@@ -1,18 +1,24 @@
 import pandas as pd
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 
-app = Flask(__name__)
+# Initialize FastAPI app
+app = FastAPI()
 
 # Load the Excel sheet into a pandas DataFrame
 df = pd.read_excel('your_excel_file.xlsx')  # Replace with the actual path to your Excel file
 
-@app.route('/get_iso_tank', methods=['POST'])
-def get_iso_tank():
-    # Get the input data from the form (either UN No. or Cargo Name)
-    cargo = request.json.get('cargo')
+# Define a Pydantic model for the request body
+class CargoRequest(BaseModel):
+    cargo: str
+
+@app.post("/get_iso_tank")
+async def get_iso_tank(cargo_request: CargoRequest):
+    cargo = cargo_request.cargo
 
     if not cargo:
-        return jsonify({"error": "Cargo not provided"}), 400
+        raise HTTPException(status_code=400, detail="Cargo not provided")
 
     # Look for either the Cargo Name or UN No. match in the DataFrame
     result = df[(df['Cargo Name'].str.contains(cargo, case=False, na=False)) | (df['UN No.'] == cargo)]
@@ -20,10 +26,6 @@ def get_iso_tank():
     if not result.empty:
         # Extract the suitable ISO Tank from the DataFrame (Column Z is the 'UNTANKINS' column)
         iso_tank = result.iloc[0]['UNTANKINS']
-        return jsonify({"iso_tank": iso_tank}), 200
+        return {"iso_tank": iso_tank}
     else:
-        return jsonify({"error": "No suitable ISO Tank found"}), 404
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
+        raise HTTPException(status_code=404, detail="No suitable ISO Tank found")
