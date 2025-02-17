@@ -1,33 +1,29 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import pandas as pd
+from flask import Flask, request, jsonify
 
-app = FastAPI()
+app = Flask(__name__)
 
-# Load the Excel file
-EXCEL_FILE = "iso_tank_data.xlsx"
+# Load the Excel sheet into a pandas DataFrame
+df = pd.read_excel('your_excel_file.xlsx')  # Replace with the actual path to your Excel file
 
-try:
-    df = pd.read_excel(EXCEL_FILE, engine="openpyxl")
-except Exception as e:
-    print("Error loading Excel file:", e)
-    df = None
+@app.route('/get_iso_tank', methods=['POST'])
+def get_iso_tank():
+    # Get the input data from the form (either UN No. or Cargo Name)
+    cargo = request.json.get('cargo')
 
-class CargoRequest(BaseModel):
-    cargo: str
+    if not cargo:
+        return jsonify({"error": "Cargo not provided"}), 400
 
-@app.post("/get_tank")
-def get_suitable_tank(request: CargoRequest):
-    if df is None:
-        raise HTTPException(status_code=500, detail="Excel file not found or corrupted.")
-    
-    cargo_input = str(request.cargo).strip().lower()
-    
-    matched_row = df[(df["UN No."].astype(str).str.lower() == cargo_input) |
-                     (df["Cargo Name"].astype(str).str.lower() == cargo_input)]
-    
-    if not matched_row.empty:
-        tank_type = matched_row.iloc[0]["Suitable ISO Tank Type"]
-        return {"message": f"The suitable ISO Tank for {request.cargo} is {tank_type}"}
+    # Look for either the Cargo Name or UN No. match in the DataFrame
+    result = df[(df['Cargo Name'].str.contains(cargo, case=False, na=False)) | (df['UN No.'] == cargo)]
+
+    if not result.empty:
+        # Extract the suitable ISO Tank from the DataFrame (Column Z is the 'UNTANKINS' column)
+        iso_tank = result.iloc[0]['UNTANKINS']
+        return jsonify({"iso_tank": iso_tank}), 200
     else:
-        raise HTTPException(status_code=404, detail="No suitable tank found for this cargo.")
+        return jsonify({"error": "No suitable ISO Tank found"}), 404
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
